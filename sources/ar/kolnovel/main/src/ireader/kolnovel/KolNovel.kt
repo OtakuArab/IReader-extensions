@@ -10,8 +10,14 @@ import ireader.core.source.model.CommandList
 import ireader.core.source.model.Filter
 import ireader.core.source.model.FilterList
 import ireader.core.source.model.MangaInfo
+import ireader.core.source.model.MangaInfo.Companion.COMPLETED
+import ireader.core.source.model.MangaInfo.Companion.ONGOING
+import ireader.core.source.model.MangaInfo.Companion.ON_HIATUS
 import ireader.core.source.SourceFactory
 import tachiyomix.annotations.Extension
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import java.util.Locale
 
 @Extension
 abstract class KolNovel(deps: Dependencies) : SourceFactory(
@@ -19,8 +25,10 @@ abstract class KolNovel(deps: Dependencies) : SourceFactory(
 ) {
     override val lang: String
         get() = "ar"
+    
     override val baseUrl: String
         get() = "https://kolnovel.site"
+    
     override val id: Long
         get() = 41
     override val name: String
@@ -55,8 +63,14 @@ abstract class KolNovel(deps: Dependencies) : SourceFactory(
                 linkSelector = "a",
                 linkAtt = "href",
                 coverSelector = "a img",
-                coverAtt = "data-src",
-                nextPageSelector = "a.r"
+                coverAtt = { element: Element ->
+                    var url = element.attr("data-src").takeIf { it.isNotEmpty() } ?: element.attr("src").takeIf { it.isNotEmpty() }
+                    if (url != null && !url.startsWith("http")) {
+                        url = baseUrl.removeSuffix("/") + "/" + url.trimStart('/')
+                    }
+                    url ?: ""
+                },
+                nextPageSelector = "a.next.page-numbers"
             ),
             BaseExploreFetcher(
                 "Search",
@@ -67,8 +81,14 @@ abstract class KolNovel(deps: Dependencies) : SourceFactory(
                 linkSelector = "a",
                 linkAtt = "href",
                 coverSelector = "a img",
-                coverAtt = "data-src",
-                nextPageSelector = "a.next",
+                coverAtt = { element: Element ->
+                    var url = element.attr("data-src").takeIf { it.isNotEmpty() } ?: element.attr("src").takeIf { it.isNotEmpty() }
+                    if (url != null && !url.startsWith("http")) {
+                        url = baseUrl.removeSuffix("/") + "/" + url.trimStart('/')
+                    }
+                    url ?: ""
+                },
+                nextPageSelector = "a.next.page-numbers",
                 type = SourceFactory.Type.Search
             ),
             BaseExploreFetcher(
@@ -80,8 +100,14 @@ abstract class KolNovel(deps: Dependencies) : SourceFactory(
                 linkSelector = "a",
                 linkAtt = "href",
                 coverSelector = "a img",
-                coverAtt = "data-src",
-                nextPageSelector = "a.r"
+                coverAtt = { element: Element ->
+                    var url = element.attr("data-src").takeIf { it.isNotEmpty() } ?: element.attr("src").takeIf { it.isNotEmpty() }
+                    if (url != null && !url.startsWith("http")) {
+                        url = baseUrl.removeSuffix("/") + "/" + url.trimStart('/')
+                    }
+                    url ?: ""
+                },
+                nextPageSelector = "a.next.page-numbers"
             ),
             BaseExploreFetcher(
                 "New",
@@ -92,48 +118,65 @@ abstract class KolNovel(deps: Dependencies) : SourceFactory(
                 linkSelector = "a",
                 linkAtt = "href",
                 coverSelector = "a img",
-                coverAtt = "data-src",
-                nextPageSelector = "a.rs"
+                coverAtt = { element: Element ->
+                    var url = element.attr("data-src").takeIf { it.isNotEmpty() } ?: element.attr("src").takeIf { it.isNotEmpty() }
+                    if (url != null && !url.startsWith("http")) {
+                        url = baseUrl.removeSuffix("/") + "/" + url.trimStart('/')
+                    }
+                    url ?: ""
+                },
+                nextPageSelector = "a.next.page-numbers"
             ),
-
         )
 
     override val detailFetcher: Detail
         get() = SourceFactory.Detail(
             nameSelector = "h1.entry-title",
             coverSelector = "div.sertothumb img",
-            coverAtt = "data-src",
-            descriptionSelector = "div.entry-content[itemprop=description] p",
+            coverAtt = { element: Element ->
+                var url = element.attr("data-src").takeIf { it.isNotEmpty() } ?: element.attr("src").takeIf { it.isNotEmpty() }
+                if (url != null && !url.startsWith("http")) {
+                    url = baseUrl.removeSuffix("/") + "/" + url.trimStart('/')
+                }
+                url ?: ""
+            },
+            descriptionSelector = "div.entry-content p",
             authorBookSelector = "div.serl:contains(الكاتب) span a",
             categorySelector = "div.sertogenre a",
             statusSelector = "div.sertostat span",
             onStatus = { status ->
-                if (status.contains("Ongoing")) {
-                    MangaInfo.ONGOING
-                } else if (status.contains("Hiatus")) {
-                    MangaInfo.ON_HIATUS
-                } else {
-                    MangaInfo.COMPLETED
+                val lowerStatus = status.lowercase(Locale.ROOT)
+                when {
+                    lowerStatus.contains("ongoing") || lowerStatus.contains("مستمرة") -> ONGOING
+                    lowerStatus.contains("hiatus") || lowerStatus.contains("متوقفة") -> ON_HIATUS
+                    lowerStatus.contains("completed") || lowerStatus.contains("مكتملة") -> COMPLETED
+                    else -> ONGOING
                 }
             },
         )
+
     override fun HttpRequestBuilder.headersBuilder(block: HeadersBuilder.() -> Unit) {
         headers {
             append(
                 HttpHeaders.UserAgent,
-                "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
             append(HttpHeaders.Referrer, baseUrl)
+            append(HttpHeaders.Accept, "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+            append("Sec-Fetch-Mode", "navigate")
+            append("Sec-Fetch-Site", "same-origin")
+            append("Sec-Fetch-User", "?1")
+            block()
         }
     }
 
     override val chapterFetcher: Chapters
         get() = SourceFactory.Chapters(
             selector = "li[data-id]",
-            nameSelector = "a div.epl-num ,a div.epl-title",
+            nameSelector = "a div.epl-num, a div.epl-title",
             linkSelector = "a",
             linkAtt = "href",
-            // reverseChapterList = true,
+            reverseChapterList = true,
         )
 
     override val contentFetcher: Content
@@ -141,10 +184,33 @@ abstract class KolNovel(deps: Dependencies) : SourceFactory(
             pageTitleSelector = ".epheader",
             pageContentSelector = "div.entry-content p:not([style~=opacity]), div.entry-content ol li",
             onContent = { contents: List<String> ->
-        contents.map { text ->
-            text.replace("*إقرأ* رواياتنا* فقط* على* مو*قع م*لوك الرو*ايات ko*lno*vel ko*lno*vel. com", "", ignoreCase = true)
-                .trim()
-        }
-    }
+                contents.map { htmlText ->
+                    val cleaned = htmlText.replace(
+                        Regex("(?i)\\*?إقرأ\\s*رواياتنا\\s*فقط\\s*على\\s*موقع\\s*ملك\\s*الروايات\\s*koll?novel\\.?\\s*koll?novel\\.com?"),
+                        ""
+                    ).trim()
+                    
+                    if (cleaned.contains("<img", ignoreCase = true)) {
+                        val doc = Jsoup.parseBodyFragment(cleaned)
+                        doc.setBaseUri(baseUrl)
+                        val images = doc.select("img")
+                        images.forEach { img ->
+                            var src = img.attr("src").takeIf { it.isNotEmpty() } ?: img.attr("data-src").takeIf { it.isNotEmpty() }
+                            if (src != null && !src.startsWith("http")) {
+                                src = baseUrl.removeSuffix("/") + "/" + src.trimStart('/')
+                            }
+                            if (src != null) {
+                                img.attr("src", src)
+                            }
+                            if (img.attr("alt").isEmpty()) {
+                                img.attr("alt", "صورة من الرواية")
+                            }
+                        }
+                        doc.body().html()
+                    } else {
+                        cleaned
+                    }
+                }.filter { it.isNotBlank() }
+            }
         )
 }
